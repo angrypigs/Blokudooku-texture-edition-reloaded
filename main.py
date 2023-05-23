@@ -62,6 +62,7 @@ class App:
                                          tags=(f"cell{i}_{j}"))
                 self.canvas.tag_bind(f"cell{i}_{j}", "<ButtonRelease-1>", link(i, j))
 
+        
         self.master.mainloop()
 
     def cell_input(self, h: int, w: int) -> None:
