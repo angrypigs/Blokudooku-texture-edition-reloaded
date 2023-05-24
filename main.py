@@ -1,14 +1,15 @@
 import tkinter as tk
 import os, sys
+import random
 
 
 
 class App:
-
+    """
+    Main blokudooku app class
+    """
     def __init__(self) -> None:
-        """
-        Main blokudooku app class
-        """
+        
         # init constants
         self.HEIGHT = 800
         self.WIDTH = 1100
@@ -28,6 +29,8 @@ class App:
                             [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1]]]
         # init variables
         self.board = [[0 for i in range(9)] for j in range(9)]
+        self.blocks_to_choose = [-1, -1, -1]
+        self.current_block = -1
         # init app master and main canvas
         self.master = tk.Tk()
         self.master.title("Blokudooku")
@@ -62,7 +65,7 @@ class App:
                                          tags=(f"cell{i}_{j}"))
                 self.canvas.tag_bind(f"cell{i}_{j}", "<ButtonRelease-1>", link(i, j))
 
-        
+        self.generate_blocks()
         self.master.mainloop()
 
     def cell_input(self, h: int, w: int) -> None:
@@ -77,6 +80,26 @@ class App:
         """
         print(idx)
 
+    def generate_blocks(self, mode: int = 3, block: int = -1) -> None:
+        """
+        Generate three blocks on right if mode == 3 
+        or specific one given by block if 0 <= mode <= 2
+        """
+        link = lambda x: (lambda event: self.block_input(x))
+        if mode==3:
+            l = random.sample(range(23), 3)
+            for i in range(3):
+                self.blocks_to_choose[i] = l[i]
+                self.canvas.create_image(self.WIDTH-160, 310+150*i, anchor='center',
+                                         image=self.BLOCKS_IMG_LIST[1][l[i]], 
+                                         tags=(f"block_icon{i}"))
+                self.canvas.tag_bind(f"block_icon{i}", "<Button-1>", link(i))
+        else:
+            self.blocks_to_choose[mode] = block
+            self.canvas.create_image(self.WIDTH-160, 310+150*mode, anchor='center',
+                                         image=self.BLOCKS_IMG_LIST[1][block], 
+                                         tags=(f"block_icon{mode}"))
+            self.canvas.tag_bind(f"block_icon{mode}", "<Button-1>", link(mode))
 
 if __name__ == "__main__":
     app = App()
