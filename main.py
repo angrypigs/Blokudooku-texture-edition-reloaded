@@ -1,7 +1,7 @@
 import tkinter as tk
 import os, sys
 import random
-
+from operator import itemgetter
 
 
 class App:
@@ -14,6 +14,7 @@ class App:
         self.HEIGHT = 800
         self.WIDTH = 1100
         self.TEXTURES_PATH = os.path.join(sys.path[0], "assets\\textures")
+        self.BLOCK_ICON_DISTANCE = lambda x: 280+200*x
         self.BLOCKS_DATA = [[[0, 0]], [[-1, 0], [0, 0]], [[0, 0], [0, 1]], 
                             [[-1, -1], [0, -1], [0, 0], [0, 1]], [[-1, 0], [0, 0], [1, -1], [1, 0]],
                             [[0, -1], [0, 0], [0, 1], [1, 1]], [[-1, 0], [-1, 1], [0, 0], [1, 0]],
@@ -31,6 +32,7 @@ class App:
         self.board = [[0 for i in range(9)] for j in range(9)]
         self.blocks_to_choose = [-1, -1, -1]
         self.current_block = -1
+        self.coords = [0, 0]
         # init app master and main canvas
         self.master = tk.Tk()
         self.master.title("Blokudooku")
@@ -41,11 +43,9 @@ class App:
         # init textures constants
         self.BLOCKS_IMG_LIST = [
             [tk.PhotoImage(file=os.path.join(self.TEXTURES_PATH,
-            f"Blocks\\{i}")) for i in os.listdir(
-            os.path.join(self.TEXTURES_PATH, "Blocks"))],
+            f"Blocks\\{i}")) for i in sorted(os.listdir(os.path.join(self.TEXTURES_PATH, "Blocks")), key=lambda x: int(x.split(".png")[0]))],
             [tk.PhotoImage(file=os.path.join(self.TEXTURES_PATH,
-            f"Blocks_icons\\{i}")) for i in os.listdir(
-            os.path.join(self.TEXTURES_PATH, "Blocks_icons"))]]
+            f"Blocks_icons\\{i}")) for i in sorted(os.listdir(os.path.join(self.TEXTURES_PATH, "Blocks_icons")), key=lambda x: int(x.split(".png")[0]))]]
         self.BG_TEXTURE = tk.PhotoImage(file=os.path.join(self.TEXTURES_PATH, "bg.png"))
         self.CELL_TEXTURE = tk.PhotoImage(file=os.path.join(self.TEXTURES_PATH, "cell.png"))
         self.CHOOSE_TEXTURE = tk.PhotoImage(file=os.path.join(self.TEXTURES_PATH, "choose_bg.png"))
@@ -54,31 +54,67 @@ class App:
         self.LOSE_TEXTURE = tk.PhotoImage(file=os.path.join(self.TEXTURES_PATH, "lose_bg.png"))
         self.LOSE_POINTS_TEXTURE = tk.PhotoImage(file=os.path.join(self.TEXTURES_PATH, "lose_points_bg.png"))
         # create app widgets
-        self.canvas.create_image(self.WIDTH//2, self.HEIGHT//2, image=self.BG_TEXTURE)
+        self.canvas.create_image(self.WIDTH//2, self.HEIGHT//2, image=self.BG_TEXTURE, tags=("bg"))
         self.canvas.create_image(self.WIDTH-40, 40, anchor="ne", image=self.POINTS_TEXTURE)
         self.canvas.create_image(self.WIDTH-40, self.HEIGHT-40, anchor='se', image=self.CHOOSE_TEXTURE)
         # create cells and bind them to method
-        link = lambda x, y: (lambda event: self.cell_input(x, y))
+        self.master.bind("<ButtonRelease-1>", lambda event: self.release_button())
+        self.master.bind("<B1-Motion>", self.mouse_motion)
         for i in range(9):
             for j in range(9):
                 self.canvas.create_image(80+80*j, 80+80*i, image=self.CELL_TEXTURE,
                                          tags=(f"cell{i}_{j}"))
-                self.canvas.tag_bind(f"cell{i}_{j}", "<ButtonRelease-1>", link(i, j))
-
+        
         self.generate_blocks()
         self.master.mainloop()
 
-    def cell_input(self, h: int, w: int) -> None:
+    def release_button(self) -> None:
         """
-        Method connected to all cells
+        Method connected to releasing left button, checks if button is released over the gridcell
+        (I tried to do it with tag binds, but background bind was blocking cell ones)
         """
-        print(h, w)
+        if self.current_block!=-1:
+            link = lambda x: (lambda p: self.block_input(x))
+            self.canvas.delete(f"block_moving{self.current_block}")
+            
+            if 40 <= self.coords[0] <= 760 and 40 <= self.coords[1] <= 760:
+                y, x = (self.coords[0]-40)//80, (self.coords[1]-40)//80
+                flag = True
+                for i in self.BLOCKS_DATA[self.blocks_to_choose[self.current_block]]:
+                    if (x+i[0]<0 or x+i[0]>8 or y+i[1]<0 or y+i[1]>8 or 
+                        self.board[x+i[0]][y+i[1]]!=0):
+                        flag = False
+                        break
+                if flag:
+                    for i in self.BLOCKS_DATA[self.blocks_to_choose[self.current_block]]:
+                        self.board[x+i[0]][y+i[1]] = 1
+                        self.canvas.create_image(80+80*(y+i[1]), 80+80*(x+i[0]), 
+                                                 image=self.BLOCKS_IMG_LIST[0][0],
+                                                 tags=(f"block{x+i[0]}_{y+i[1]}"))
+                    self.blocks_to_choose[self.current_block] = -1
+                    if self.blocks_to_choose.count(-1)==3: self.generate_blocks()
+                    self.current_block = -1
+                    return
+            self.canvas.create_image(self.WIDTH-160, 310+150*self.current_block, anchor='center',
+                                    image=self.BLOCKS_IMG_LIST[1][self.blocks_to_choose[self.current_block]], 
+                                    tags=(f"block_icon{self.current_block}"))
+            self.canvas.tag_bind(f"block_icon{self.current_block}", "<Button-1>", link(self.current_block))
+            self.current_block = -1
 
     def block_input(self, idx: int) -> None:
         """
         Method connected to blocks icons
         """
-        print(idx)
+        self.canvas.delete(f"block_icon{idx}")
+        self.canvas.create_image(self.WIDTH-160, self.BLOCK_ICON_DISTANCE(idx), 
+                                 image=self.BLOCKS_IMG_LIST[0][self.blocks_to_choose[idx]], 
+                                 tags=(f"block_moving{idx}"))
+        self.current_block = idx
+
+    def mouse_motion(self, event) -> None:
+        self.coords[0], self.coords[1] = event.x, event.y
+        if self.current_block!=-1:
+            self.canvas.coords(f"block_moving{self.current_block}", self.coords[0], self.coords[1])
 
     def generate_blocks(self, mode: int = 3, block: int = -1) -> None:
         """
@@ -90,16 +126,18 @@ class App:
             l = random.sample(range(23), 3)
             for i in range(3):
                 self.blocks_to_choose[i] = l[i]
-                self.canvas.create_image(self.WIDTH-160, 310+150*i, anchor='center',
+                self.canvas.create_image(self.WIDTH-160, self.BLOCK_ICON_DISTANCE(i), anchor='center',
                                          image=self.BLOCKS_IMG_LIST[1][l[i]], 
                                          tags=(f"block_icon{i}"))
                 self.canvas.tag_bind(f"block_icon{i}", "<Button-1>", link(i))
         else:
             self.blocks_to_choose[mode] = block
-            self.canvas.create_image(self.WIDTH-160, 310+150*mode, anchor='center',
+            self.canvas.create_image(self.WIDTH-160, self.BLOCK_ICON_DISTANCE(mode), anchor='center',
                                          image=self.BLOCKS_IMG_LIST[1][block], 
                                          tags=(f"block_icon{mode}"))
             self.canvas.tag_bind(f"block_icon{mode}", "<Button-1>", link(mode))
+        print(l)
+
 
 if __name__ == "__main__":
     app = App()
