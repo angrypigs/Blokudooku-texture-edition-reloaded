@@ -1,8 +1,8 @@
 import tkinter as tk
 import os, sys
 import random
-from operator import itemgetter
-
+import threading as th
+import time
 
 class App:
     """
@@ -33,6 +33,7 @@ class App:
         self.blocks_to_choose = [-1, -1, -1]
         self.current_block = -1
         self.coords = [0, 0]
+        self.flag_working = True
         # init app master and main canvas
         self.master = tk.Tk()
         self.master.title("Blokudooku")
@@ -69,22 +70,27 @@ class App:
         self.master.mainloop()
 
     def release_button(self) -> None:
+        # (I tried to do it with tag binds, but background bind was blocking cell ones)
         """
-        Method connected to releasing left button, checks if button is released over the gridcell
-        (I tried to do it with tag binds, but background bind was blocking cell ones)
+        Method connected to releasing left button, checks if button is released over the gridcell,
+        and if block can be placed, puts block in board matrix and over the gridcell
         """
         if self.current_block!=-1:
-            link = lambda x: (lambda p: self.block_input(x))
+            # delete block moved with mouse
             self.canvas.delete(f"block_moving{self.current_block}")
-            
+            # check if release was in grid area
             if 40 <= self.coords[0] <= 760 and 40 <= self.coords[1] <= 760:
                 y, x = (self.coords[0]-40)//80, (self.coords[1]-40)//80
                 flag = True
+                # check for all cells of block if both coords of them
+                # are in range [0, 8] and points to empty cell in board matrix
                 for i in self.BLOCKS_DATA[self.blocks_to_choose[self.current_block]]:
                     if (x+i[0]<0 or x+i[0]>8 or y+i[1]<0 or y+i[1]>8 or 
                         self.board[x+i[0]][y+i[1]]!=0):
                         flag = False
                         break
+                # put block in board matrix and on gridcell if 
+                # previous conditions are true
                 if flag:
                     for i in self.BLOCKS_DATA[self.blocks_to_choose[self.current_block]]:
                         self.board[x+i[0]][y+i[1]] = 1
@@ -93,13 +99,35 @@ class App:
                                                  tags=(f"block{x+i[0]}_{y+i[1]}"))
                     self.blocks_to_choose[self.current_block] = -1
                     if self.blocks_to_choose.count(-1)==3: self.generate_blocks()
+                    l = []
+                    for i in range(9):
+                        if self.board[i].count(1)==9:
+                            l.extend([[i, j] for j in range(9)])
+                        if [self.board[k][i] for k in range(9)].count(1)==9:
+                            l.extend([j, i] for j in range(9))
+                    l1 = []
+                    for i in l:
+                        self.board[i[0]][i[1]]=0
+                        if i not in l1: l1.append(i)
+                    th.Thread(target=self.rows_cols_falling_animation, args=(l1, )).start()
                     self.current_block = -1
                     return
+            # put block icon back in panel if block wasn't put on board previously
+            link = lambda x: (lambda p: self.block_input(x))
             self.canvas.create_image(self.WIDTH-160, 310+150*self.current_block, anchor='center',
                                     image=self.BLOCKS_IMG_LIST[1][self.blocks_to_choose[self.current_block]], 
                                     tags=(f"block_icon{self.current_block}"))
             self.canvas.tag_bind(f"block_icon{self.current_block}", "<Button-1>", link(self.current_block))
             self.current_block = -1
+
+    def rows_cols_falling_animation(self, blocks: list) -> None:
+        """
+        Thread function to load falling animation for all cells in given list
+        """
+        for i in blocks:
+            self.canvas.delete(f"block{i[0]}_{i[1]}")
+            self.canvas.update()
+            time.sleep(0.02)
 
     def block_input(self, idx: int) -> None:
         """
@@ -112,6 +140,9 @@ class App:
         self.current_block = idx
 
     def mouse_motion(self, event) -> None:
+        """
+        Method connected to mouse motion with left button event
+        """
         self.coords[0], self.coords[1] = event.x, event.y
         if self.current_block!=-1:
             self.canvas.coords(f"block_moving{self.current_block}", self.coords[0], self.coords[1])
@@ -136,7 +167,6 @@ class App:
                                          image=self.BLOCKS_IMG_LIST[1][block], 
                                          tags=(f"block_icon{mode}"))
             self.canvas.tag_bind(f"block_icon{mode}", "<Button-1>", link(mode))
-        print(l)
 
 
 if __name__ == "__main__":
