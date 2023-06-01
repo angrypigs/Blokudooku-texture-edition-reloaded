@@ -79,19 +79,12 @@ class App:
             # delete block moved with mouse
             self.canvas.delete(f"block_moving{self.current_block}")
             # check if release was in grid area
+            block_put = False
             if 40 <= self.coords[0] <= 760 and 40 <= self.coords[1] <= 760:
                 y, x = (self.coords[0]-40)//80, (self.coords[1]-40)//80
-                flag = True
-                # check for all cells of block if both coords of them
-                # are in range [0, 8] and points to empty cell in board matrix
-                for i in self.BLOCKS_DATA[self.blocks_to_choose[self.current_block]]:
-                    if (x+i[0]<0 or x+i[0]>8 or y+i[1]<0 or y+i[1]>8 or 
-                        self.board[x+i[0]][y+i[1]]!=0):
-                        flag = False
-                        break
                 # put block in board matrix and on gridcell if 
                 # previous conditions are true
-                if flag:
+                if self.check_correctness(self.blocks_to_choose[self.current_block], x, y):
                     for i in self.BLOCKS_DATA[self.blocks_to_choose[self.current_block]]:
                         self.board[x+i[0]][y+i[1]] = 1
                         self.canvas.create_image(80+80*(y+i[1]), 80+80*(x+i[0]), 
@@ -111,14 +104,37 @@ class App:
                         if i not in l1: l1.append(i)
                     th.Thread(target=self.rows_cols_falling_animation, args=(l1, )).start()
                     self.current_block = -1
-                    return
+                    block_put = True
+                    flag = False
+                    for i in [self.blocks_to_choose[x] for x in range(3) if self.blocks_to_choose[x]!=-1]:
+                        if flag: break
+                        for j in range(9):
+                            if flag: break
+                            for k in range(9):
+                                flag = self.check_correctness(i, j, k)
+                                if flag: break
+                    if not flag:
+                        print("game over")
+
+
             # put block icon back in panel if block wasn't put on board previously
-            link = lambda x: (lambda p: self.block_input(x))
-            self.canvas.create_image(self.WIDTH-160, 310+150*self.current_block, anchor='center',
-                                    image=self.BLOCKS_IMG_LIST[1][self.blocks_to_choose[self.current_block]], 
-                                    tags=(f"block_icon{self.current_block}"))
-            self.canvas.tag_bind(f"block_icon{self.current_block}", "<Button-1>", link(self.current_block))
-            self.current_block = -1
+            if not block_put:
+                link = lambda x: (lambda p: self.block_input(x))
+                self.canvas.create_image(self.WIDTH-160, self.BLOCK_ICON_DISTANCE(self.current_block), anchor='center',
+                                        image=self.BLOCKS_IMG_LIST[1][self.blocks_to_choose[self.current_block]], 
+                                        tags=(f"block_icon{self.current_block}"))
+                self.canvas.tag_bind(f"block_icon{self.current_block}", "<Button-1>", link(self.current_block))
+                self.current_block = -1
+
+    def check_correctness(self, block: int, x: int, y: int) -> bool:
+        """
+        Checks if given block can fit on board in given (x, y) cell
+        """
+        for i in self.BLOCKS_DATA[block]:
+            if (x+i[0]<0 or x+i[0]>8 or y+i[1]<0 or y+i[1]>8 or 
+                self.board[x+i[0]][y+i[1]]!=0):
+                return False
+        return True
 
     def rows_cols_falling_animation(self, blocks: list) -> None:
         """
