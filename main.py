@@ -32,12 +32,15 @@ class App:
         self.board = [[0 for i in range(9)] for j in range(9)]
         self.blocks_to_choose = [-1, -1, -1]
         self.current_block = -1
+        self.current_points = 0
         self.coords = [0, 0]
         self.flag_working = True
+        self.flag_pause = False
         # init app master and main canvas
         self.master = tk.Tk()
         self.master.title("Blokudooku")
         self.master.geometry(f"{self.WIDTH}x{self.HEIGHT}")
+        self.master.resizable(False, False)
         self.canvas = tk.Canvas(self.master, height=self.HEIGHT, width=self.WIDTH,
                                 bd=0, highlightthickness=0)
         self.canvas.place(x=0, y=0)
@@ -58,6 +61,9 @@ class App:
         self.canvas.create_image(self.WIDTH//2, self.HEIGHT//2, image=self.BG_TEXTURE, tags=("bg"))
         self.canvas.create_image(self.WIDTH-40, 40, anchor="ne", image=self.POINTS_TEXTURE)
         self.canvas.create_image(self.WIDTH-40, self.HEIGHT-40, anchor='se', image=self.CHOOSE_TEXTURE)
+        self.canvas.create_text(self.WIDTH-160, 80, justify='center', anchor='center',
+                                 font=('Courier', '30', 'bold'), fill="#E29C49", 
+                                 text=str(self.current_points), tags=("points"))
         # create cells and bind them to method
         self.master.bind("<ButtonRelease-1>", lambda event: self.release_button())
         self.master.bind("<B1-Motion>", self.mouse_motion)
@@ -91,7 +97,9 @@ class App:
                                                  image=self.BLOCKS_IMG_LIST[0][0],
                                                  tags=(f"block{x+i[0]}_{y+i[1]}"))
                     self.blocks_to_choose[self.current_block] = -1
+                    # generates new three blocks if previous three are gone
                     if self.blocks_to_choose.count(-1)==3: self.generate_blocks()
+                    # makes a list with cells from filled cols and rows
                     l = []
                     for i in range(9):
                         if self.board[i].count(1)==9:
@@ -102,8 +110,10 @@ class App:
                     for i in l:
                         self.board[i[0]][i[1]]=0
                         if i not in l1: l1.append(i)
-                    th.Thread(target=self.rows_cols_falling_animation, args=(l1, )).start()
+                    if len(l1)>0:
+                        th.Thread(target=self.rows_cols_break_animation, args=(l1, )).start()
                     self.current_block = -1
+                    # checks if there's at least one cell to place at least one block
                     block_put = True
                     flag = False
                     for i in [self.blocks_to_choose[x] for x in range(3) if self.blocks_to_choose[x]!=-1]:
@@ -113,10 +123,33 @@ class App:
                             for k in range(9):
                                 flag = self.check_correctness(i, j, k)
                                 if flag: break
+                    # if previous condition is false, make game over screen
                     if not flag:
-                        print("game over")
-
-
+                        self.flag_pause = True
+                        self.canvas.create_image(self.WIDTH//2, self.HEIGHT//2,
+                                                 image=self.LOSE_TEXTURE,
+                                                 tags=("lose_panel"))
+                        self.canvas.create_image(self.WIDTH//2, self.HEIGHT//2-20,
+                                                 image=self.LOSE_POINTS_TEXTURE,
+                                                 tags=("lose_panel"))
+                        self.canvas.create_text(self.WIDTH//2, self.HEIGHT//2-120,
+                                                text="Game over!", justify='center', anchor='center',
+                                                font=('Courier', '30', 'bold'), fill="#E29C49",
+                                                tags=("lose_panel"))
+                        self.canvas.create_image(self.WIDTH//2, self.HEIGHT//2+100,
+                                                 image=self.BUTTON_TEXTURE,
+                                                 tags=("lose_panel", "lose_resume_btn"))
+                        self.canvas.create_text(self.WIDTH//2, self.HEIGHT//2+100,
+                                                text="Play again", justify='center', anchor='center',
+                                                state='disabled', fill="#000000",
+                                                font=('Courier', '30', 'bold'),
+                                                tags=("lose_panel"))
+                        self.canvas.create_text(self.WIDTH//2, self.HEIGHT//2-20,
+                                                text="0", justify='center', anchor='center',
+                                                font=('Courier', '30', 'bold'), fill="#E29C49",
+                                                tags=("lose_panel", "lose_points_counter"))
+                        self.points_animation(0, self.current_points, "lose_points_counter")
+                        self.canvas.tag_bind("lose_resume_btn", "<Button-1>", lambda event: self.new_game())
             # put block icon back in panel if block wasn't put on board previously
             if not block_put:
                 link = lambda x: (lambda p: self.block_input(x))
@@ -125,6 +158,34 @@ class App:
                                         tags=(f"block_icon{self.current_block}"))
                 self.canvas.tag_bind(f"block_icon{self.current_block}", "<Button-1>", link(self.current_block))
                 self.current_block = -1
+
+    def new_game(self) -> None:
+        """
+        Creates a new game
+        """
+        for i in range(3):
+            self.blocks_to_choose[i]=-1
+            self.canvas.delete(f"block_icon{i}")
+        for i in range(9):
+            for j in range(9):
+                self.board[i][j] = 0
+                self.canvas.delete(f"block{i}_{j}")
+        self.canvas.itemconfig("points", text="0")
+        self.current_points = 0
+        self.generate_blocks()
+        self.canvas.delete("lose_panel")
+        self.flag_pause = False
+        
+    def points_animation(self, a: int, b: int, tag: str) -> None:
+        """
+        Create a smooth transition between two numbers in text widget
+        """
+        if b-a>0:
+            steps = int((b-a)//4)
+            for i in range(steps+1):
+                self.canvas.itemconfig(tag, text=str(int(a+(b-a)*i/steps)))
+                time.sleep(0.4/steps)
+                self.canvas.update()
 
     def check_correctness(self, block: int, x: int, y: int) -> bool:
         """
@@ -136,11 +197,13 @@ class App:
                 return False
         return True
 
-    def rows_cols_falling_animation(self, blocks: list) -> None:
+    def rows_cols_break_animation(self, blocks: list) -> None:
         """
         Thread function to load falling animation for all cells in given list
         """
         for i in blocks:
+            self.current_points += 1
+            self.canvas.itemconfig("points", text=str(self.current_points))
             self.canvas.delete(f"block{i[0]}_{i[1]}")
             self.canvas.update()
             time.sleep(0.02)
@@ -149,11 +212,12 @@ class App:
         """
         Method connected to blocks icons
         """
-        self.canvas.delete(f"block_icon{idx}")
-        self.canvas.create_image(self.WIDTH-160, self.BLOCK_ICON_DISTANCE(idx), 
-                                 image=self.BLOCKS_IMG_LIST[0][self.blocks_to_choose[idx]], 
-                                 tags=(f"block_moving{idx}"))
-        self.current_block = idx
+        if not self.flag_pause:
+            self.canvas.delete(f"block_icon{idx}")
+            self.canvas.create_image(self.WIDTH-160, self.BLOCK_ICON_DISTANCE(idx), 
+                                    image=self.BLOCKS_IMG_LIST[0][self.blocks_to_choose[idx]], 
+                                    tags=(f"block_moving{idx}"))
+            self.current_block = idx
 
     def mouse_motion(self, event) -> None:
         """
